@@ -1,63 +1,57 @@
-name: Build et Release APK Android
+name: Build Android APK
+
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build-apk:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
     steps:
-      - name: Checkout du code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configuration de Java 17
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Configuration du SDK Android
-        uses: android-actions/setup-android@v4
-        with:
-          packages: 'platform-tools'
+      - name: Set up Android SDK & NDK
+        uses: android-actions/setup-android@v3
 
-      - name: Installation du NDK Android
-        run: sdkmanager "ndk;26.1.10909125"
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;26.1.10909125" "build-tools;34.0.0" "platforms;android-34"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
 
-      - name: Installation de Rust et des cibles Android
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
-      - name: Configuration de Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2.0.0" --locked
 
-      - name: Creation forcee du dossier Web et des icones
+      - name: Init Android Project (si absent)
         run: |
-          mkdir -p dist
-          echo '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>body { margin: 0; background: #222; font-family: sans-serif; display: flex; padding: 5px; gap: 5px; overflow: hidden; } input { flex: 1; padding: 8px; border: 1px solid #444; background: #333; color: white; border-radius: 4px; font-size: 14px; } button { padding: 8px 16px; background: #0f766e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }</style></head><body><input type="text" id="url-input" value="https://tauri.app" /><button id="go-btn">Aller</button><script>const { invoke } = window.__TAURI__.core; const input = document.getElementById("url-input"); const button = document.getElementById("go-btn"); function naviguer() { let url = input.value.trim(); if (!url.startsWith("http://") && !url.startsWith("https://")) { url = "https://" + url; } invoke("changer_url", { url: url }); } button.addEventListener("click", naviguer); input.addEventListener("keypress", (e) => { if (e.key === "Enter") naviguer(); });</script></body></html>' > dist/index.html
-          mkdir -p src-tauri/icons
-          touch src-tauri/icons/32x32.png src-tauri/icons/128x128.png src-tauri/icons/128x128@2x.png src-tauri/icons/icon.icns src-tauri/icons/icon.ico
+          if [ ! -d "src-tauri/gen/android" ]; then
+            cargo tauri android init
+          fi
 
-      - name: Installation de la CLI Tauri
-        run: npm install -g @tauri-apps/cli
+      - name: Build Android APK
+        run: |
+          cargo tauri android build --apk --target aarch64-linux-android
 
-      - name: Initialisation du projet Android dans Tauri
-        run: npx tauri android init
-
-      - name: Compilation de l'APK Android
-        run: npx tauri android build --apk
-
-      - name: Creation de la Release GitHub et televersement de l'APK
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: src-tauri/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: rust-browser-apk
+          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
