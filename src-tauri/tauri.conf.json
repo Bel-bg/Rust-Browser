@@ -23,6 +23,6 @@
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "frontendDist": "./"
+    "frontendDist": "../dist"
   }
 }
