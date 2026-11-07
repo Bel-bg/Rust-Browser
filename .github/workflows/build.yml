@@ -1,38 +1,57 @@
-name: Rust Brower Buiding
+name: Rust Browser APK Release
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    tags:
+      - 'v*' # Le build se lance dès que tu crées un tag de version (ex: v1.0.0)
+  workflow_dispatch: # Te permet aussi de lancer le build manuellement depuis l'onglet Actions
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Indispensable pour autoriser GitHub à créer la Release
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout du code
+        uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Configuration de Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Configuration du SDK Android
+        uses: android-actions/setup-android@v3
+
+      - name: Installation du NDK Android
+        run: sdkmanager "ndk;26.1.10909125"
+
+      - name: Installation de Rust et des cibles Android
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
-      - name: Install Node.js (for Tauri CLI)
+      - name: Configuration de Node.js
         uses: actions/setup-node@v4
         with:
-          node-size: 20
+          node-version: 20
 
-      - name: Install Tauri CLI & Generate dummy icons
+      - name: Installation de la CLI Tauri et génération d'icônes temporaires
         run: |
-          npm install -g @tauri-apps/cli@next
-          mkdir src-tauri/icons
-          fsutil file createnew src-tauri/icons/32x32.png 0
-          fsutil file createnew src-tauri/icons/128x128.png 0
-          fsutil file createnew src-tauri/icons/128x128@2x.png 0
-          fsutil file createnew src-tauri/icons/icon.icns 0
-          fsutil file createnew src-tauri/icons/icon.ico 0
+          npm install -g @tauri-apps/cli
+          mkdir -p src-tauri/icons
+          touch src-tauri/icons/32x32.png src-tauri/icons/128x128.png src-tauri/icons/128x128@2x.png src-tauri/icons/icon.icns src-tauri/icons/icon.ico
 
-      - name: Build Application
-        run: npx tauri build --no-bundle
+      - name: Initialisation du projet Android dans Tauri
+        run: npx tauri android init
 
-      - name: Upload Executable
-        uses: actions/upload-artifact@v4
+      - name: Compilation de l'APK Android
+        run: npx tauri android build --apk
+
+      - name: Création de la Release GitHub et téléversement de l'APK
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: MonNavigateur-Windows
-          path: src-tauri/target/release/mon-navigateur-leger.exe
+          files: src-tauri/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
