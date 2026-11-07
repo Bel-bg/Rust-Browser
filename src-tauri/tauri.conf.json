@@ -20,9 +20,9 @@
       "csp": null
     }
   },
-  "build": {
+    "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "frontendDist": "../"
+    "frontendDist": "../ui"
   }
 }
