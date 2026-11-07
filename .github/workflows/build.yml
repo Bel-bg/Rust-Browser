@@ -1,0 +1,38 @@
+name: Rust Brower Buiding
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js (for Tauri CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+
+      - name: Install Tauri CLI & Generate dummy icons
+        run: |
+          npm install -g @tauri-apps/cli@next
+          mkdir src-tauri/icons
+          fsutil file createnew src-tauri/icons/32x32.png 0
+          fsutil file createnew src-tauri/icons/128x128.png 0
+          fsutil file createnew src-tauri/icons/128x128@2x.png 0
+          fsutil file createnew src-tauri/icons/icon.icns 0
+          fsutil file createnew src-tauri/icons/icon.ico 0
+
+      - name: Build Application
+        run: npx tauri build --no-bundle
+
+      - name: Upload Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: MonNavigateur-Windows
+          path: src-tauri/target/release/mon-navigateur-leger.exe
