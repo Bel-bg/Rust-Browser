@@ -1,5 +1,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    rust_browser_lib::run();
+    rust_browser_lib::run()
 }

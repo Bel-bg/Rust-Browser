@@ -1,57 +1,84 @@
-name: Build Android APK
+name: Build et Release APK Android
 
 on:
   push:
-    branches: [ "main", "master" ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
-  build-apk:
+  build-android:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
+    env:
+      NDK_VERSION: "27.2.12479018"
     steps:
-      - name: Checkout repository
+      - name: Checkout du code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - name: SDK Android
+        uses: android-actions/setup-android@v4
+
+      - name: NDK Android
+        run: |
+          sdkmanager --install "ndk;${NDK_VERSION}"
+          echo "NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+      - name: Rust et cibles Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
+      - name: CLI Tauri
+        run: npm install -g @tauri-apps/cli@2
 
-      - name: Set up Android SDK & NDK
-        uses: android-actions/setup-android@v3
+      - name: Initialisation du projet Android
+        run: tauri android init --ci
 
-      - name: Install Android NDK
+      - name: Compilation de l'APK
+        run: tauri android build --apk --ci --target aarch64 --target armv7
+
+      - name: Signature de l'APK
         run: |
-          sdkmanager --install "ndk;26.1.10909125" "build-tools;34.0.0" "platforms;android-34"
-          echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2.0.0" --locked
-
-      - name: Init Android Project (si absent)
-        run: |
-          if [ ! -d "src-tauri/gen/android" ]; then
-            cargo tauri android init
+          UNSIGNED=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -n 1)
+          if [ -z "$UNSIGNED" ]; then
+            echo "Aucun APK release trouve. Contenu de outputs/apk :"
+            find src-tauri/gen/android/app/build/outputs -type f
+            exit 1
           fi
+          BT=$(ls -d "${ANDROID_HOME}"/build-tools/* | sort -V | tail -n 1)
+          keytool -genkeypair -keystore ci.jks -storepass android -keypass android \
+            -alias rustbrowser -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Rust Browser"
+          "$BT/apksigner" sign --ks ci.jks --ks-pass pass:android --key-pass pass:android \
+            --out "rust-browser-${GITHUB_REF_NAME}.apk" "$UNSIGNED"
+          "$BT/apksigner" verify "rust-browser-${GITHUB_REF_NAME}.apk"
 
-      - name: Build Android APK
-        run: |
-          cargo tauri android build --apk --target aarch64-linux-android
-
-      - name: Upload APK Artifact
+      - name: Artefact (telechargeable depuis le run)
         uses: actions/upload-artifact@v4
         with:
           name: rust-browser-apk
-          path: src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+          path: rust-browser-*.apk
+
+      - name: Release GitHub
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: rust-browser-*.apk
