@@ -12,49 +12,15 @@ fn changer_url(handle: tauri::AppHandle, url: String) {
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
-            // Notre code HTML directement en chaîne de caractères Rust !
-            let html_barre = r#"
-            <!DOCTYPE html>
-            <html lang="fr">
-            <head>
-              <meta charset="UTF-8">
-              <style>
-                body { margin: 0; background: #222; font-family: sans-serif; display: flex; padding: 5px; gap: 5px; overflow: hidden; }
-                input { flex: 1; padding: 8px; border: 1px solid #444; background: #333; color: white; border-radius: 4px; font-size: 14px; }
-                button { padding: 8px 16px; background: #0f766e; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
-                button:hover { background: #115e59; }
-              </style>
-            </head>
-            <body>
-              <input type="text" id="url-input" value="https://tauri.app" placeholder="Entrez une URL..." />
-              <button id="go-btn">Aller</button>
-              <script>
-                const { invoke } = window.__TAURI__.core;
-                const input = document.getElementById('url-input');
-                const button = document.getElementById('go-btn');
-                function naviguer() {
-                  let url = input.value.trim();
-                  if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    url = 'https://' + url;
-                  }
-                  invoke('changer_url', { url: url });
-                }
-                button.addEventListener('click', naviguer);
-                input.addEventListener('keypress', (e) => { if (e.key === 'Enter') naviguer(); });
-              </script>
-            </body>
-            </html>
-            "#;
-
             // 1. Fenêtre principale
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
                 .title("Mon Navigateur Léger")
                 .inner_size(1000.0, 700.0)
                 .build()?;
 
-            // 2. Barre d'outils (On lui passe directement le texte HTML)
+            // 2. Barre d'outils (cherche index.html dans le dossier dist)
             let _barre = window.add_child(
-                tauri::webview::WebviewBuilder::new("barre", WebviewUrl::Custom(html_barre.to_string()))
+                tauri::webview::WebviewBuilder::new("barre", WebviewUrl::App("index.html".into()))
                     .auto_resize()
             , tauri::LogicalPosition::new(0.0, 0.0), tauri::LogicalSize::new(1000.0, 50.0))?;
 
